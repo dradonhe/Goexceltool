@@ -1,0 +1,137 @@
+package excel
+
+import (
+	"testing"
+)
+
+func TestNewHandler(t *testing.T) {
+	handler := NewHandler()
+	if handler == nil {
+		t.Error("NewHandler() should not return nil")
+	}
+	
+	if handler.file != nil {
+		t.Error("NewHandler() should initialize with nil file")
+	}
+	
+	if handler.path != "" {
+		t.Error("NewHandler() should initialize with empty path")
+	}
+}
+
+func TestParseRowRange(t *testing.T) {
+	tests := []struct {
+		input    string
+		maxRows  int
+		expected []int
+	}{
+		{"1", 10, []int{1}},
+		{"1,3,5", 10, []int{1, 3, 5}},
+		{"1-3", 10, []int{1, 2, 3}},
+		{"1,3-5,7", 10, []int{1, 3, 4, 5, 7}},
+		{"1,1,2,2", 10, []int{1, 2}}, // 去重测试
+		{"15", 10, []int{}},          // 超出范围
+		{"5-15", 10, []int{5, 6, 7, 8, 9, 10}}, // 部分超出范围
+	}
+	
+	for _, test := range tests {
+		result := ParseRowRange(test.input, test.maxRows)
+		if len(result) != len(test.expected) {
+			t.Errorf("ParseRowRange(%s, %d) length = %d; expected %d", 
+				test.input, test.maxRows, len(result), len(test.expected))
+			continue
+		}
+		
+		for i, val := range result {
+			if val != test.expected[i] {
+				t.Errorf("ParseRowRange(%s, %d)[%d] = %d; expected %d", 
+					test.input, test.maxRows, i, val, test.expected[i])
+			}
+		}
+	}
+}
+
+func TestParseColumnRange(t *testing.T) {
+	tests := []struct {
+		input    string
+		maxCols  int
+		expected []int
+	}{
+		{"A", 10, []int{0}},
+		{"A,C,E", 10, []int{0, 2, 4}},
+		{"A-C", 10, []int{0, 1, 2}},
+		{"A,C,E-G", 10, []int{0, 2, 4, 5, 6}},
+		{"A,A,B,B", 10, []int{0, 1}}, // 去重测试
+		{"Z", 10, []int{}},           // 超出范围
+		{"A-Z", 5, []int{0, 1, 2, 3, 4}}, // 部分超出范围
+	}
+	
+	for _, test := range tests {
+		result := ParseColumnRange(test.input, test.maxCols)
+		if len(result) != len(test.expected) {
+			t.Errorf("ParseColumnRange(%s, %d) length = %d; expected %d", 
+				test.input, test.maxCols, len(result), len(test.expected))
+			continue
+		}
+		
+		for i, val := range result {
+			if val != test.expected[i] {
+				t.Errorf("ParseColumnRange(%s, %d)[%d] = %d; expected %d", 
+					test.input, test.maxCols, i, val, test.expected[i])
+			}
+		}
+	}
+}
+
+func TestValidateSheetName(t *testing.T) {
+	validNames := []string{
+		"Sheet1",
+		"Data",
+		"My Sheet",
+		"报表数据",
+	}
+	
+	invalidNames := []string{
+		"",                    // 空名称
+		"VeryLongSheetNameThatExceedsThirtyOneCharactersLimit", // 超过31字符
+		"Sheet[1]",           // 包含非法字符
+		"Sheet/2",            // 包含斜杠
+		"Sheet*",             // 包含星号
+	}
+	
+	for _, name := range validNames {
+		if !ValidateSheetName(name) {
+			t.Errorf("ValidateSheetName(%s) should return true", name)
+		}
+	}
+	
+	for _, name := range invalidNames {
+		if ValidateSheetName(name) {
+			t.Errorf("ValidateSheetName(%s) should return false", name)
+		}
+	}
+}
+
+func TestColToNum(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int
+	}{
+		{"A", 1},
+		{"B", 2},
+		{"Z", 26},
+		{"AA", 27},
+		{"AB", 28},
+		{"AZ", 52},
+		{"BA", 53},
+		{"ZZ", 702},
+		{"AAA", 703},
+	}
+	
+	for _, test := range tests {
+		result := colToNum(test.input)
+		if result != test.expected {
+			t.Errorf("colToNum(%s) = %d; expected %d", test.input, result, test.expected)
+		}
+	}
+}

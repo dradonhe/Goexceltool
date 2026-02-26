@@ -1,0 +1,131 @@
+package utils
+
+import (
+	"testing"
+)
+
+func TestColToNum(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int
+	}{
+		{"A", 1},
+		{"B", 2},
+		{"Z", 26},
+		{"AA", 27},
+		{"AB", 28},
+		{"AZ", 52},
+		{"BA", 53},
+		{"ZZ", 702},
+		{"AAA", 703},
+	}
+	
+	for _, test := range tests {
+		result := ColToNum(test.input)
+		if result != test.expected {
+			t.Errorf("ColToNum(%s) = %d; expected %d", test.input, result, test.expected)
+		}
+	}
+}
+
+func TestParseColumns(t *testing.T) {
+	tests := []struct {
+		input     string
+		totalCols int
+		expected  []int
+	}{
+		{"A", 10, []int{0}},
+		{"A,C", 10, []int{0, 2}},
+		{"A-C", 10, []int{0, 1, 2}},
+		{"A,C,E-G", 10, []int{0, 2, 4, 5, 6}},
+		{"A,B,C", 2, []int{0, 1}}, // 超出范围的列应该被过滤
+	}
+	
+	for _, test := range tests {
+		result := ParseColumns(test.input, test.totalCols)
+		if len(result) != len(test.expected) {
+			t.Errorf("ParseColumns(%s, %d) length = %d; expected %d", 
+				test.input, test.totalCols, len(result), len(test.expected))
+			continue
+		}
+		
+		for i, val := range result {
+			if val != test.expected[i] {
+				t.Errorf("ParseColumns(%s, %d)[%d] = %d; expected %d", 
+					test.input, test.totalCols, i, val, test.expected[i])
+			}
+		}
+	}
+}
+
+func TestParseRows(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []int
+	}{
+		{"1", []int{1}},
+		{"1,3,5", []int{1, 3, 5}},
+		{"1-3", []int{1, 2, 3}},
+		{"1,3-5,7", []int{1, 3, 4, 5, 7}},
+		{"1,1,2,2", []int{1, 2}}, // 测试去重
+	}
+	
+	for _, test := range tests {
+		result := ParseRows(test.input)
+		if len(result) != len(test.expected) {
+			t.Errorf("ParseRows(%s) length = %d; expected %d", 
+				test.input, len(result), len(test.expected))
+			continue
+		}
+		
+		for i, val := range result {
+			if val != test.expected[i] {
+				t.Errorf("ParseRows(%s)[%d] = %d; expected %d", 
+					test.input, i, val, test.expected[i])
+			}
+		}
+	}
+}
+
+func TestGenerateOutputFilename(t *testing.T) {
+	tests := []struct {
+		baseName string
+		suffix   string
+		ext      string
+		expected string
+	}{
+		{"test", "", "", "test_processed.xlsx"},
+		{"test", "_new", "", "test_new.xlsx"},
+		{"test", "", ".xls", "test_processed.xls"},
+		{"data", "_result", ".xlsx", "data_result.xlsx"},
+	}
+	
+	for _, test := range tests {
+		result := GenerateOutputFilename(test.baseName, test.suffix, test.ext)
+		if result != test.expected {
+			t.Errorf("GenerateOutputFilename(%s, %s, %s) = %s; expected %s", 
+				test.baseName, test.suffix, test.ext, result, test.expected)
+		}
+	}
+}
+
+func TestGetFileNameWithoutExt(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"test.xlsx", "test"},
+		{"path/to/test.xlsx", "test"},
+		{"test.xls", "test"},
+		{"test", "test"},
+		{"/full/path/test.xlsx", "test"},
+	}
+	
+	for _, test := range tests {
+		result := GetFileNameWithoutExt(test.input)
+		if result != test.expected {
+			t.Errorf("GetFileNameWithoutExt(%s) = %s; expected %s", 
+				test.input, result, test.expected)
+		}
+	}
+}
