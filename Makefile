@@ -1,69 +1,79 @@
-# Go Excel Tool Build Scripts
+# ExcelTool 构建脚本
+#
+# 首选：Windows 上用 PowerShell 脚本（会做静态性校验）
+#   .\scripts\build.ps1 -Version 3.1.0
+#
+# 备用：Linux / macOS / WSL 上用 make
+#   make linux VERSION=3.1.0
+#
+# 所有目标都强制 CGO_ENABLED=0：
+#   产物不链接 glibc、不需要动态加载器，Windows 上可直接交叉编译出国产 Linux 包。
 
-.PHONY: all clean build test install-deps
+BINARY   := exceltool
+VERSION  ?= dev
+OUT      := bin
+PKG      := ./cmd/exceltool
+LDFLAGS  := -s -w -X main.version=$(VERSION)
+GOFLAGS  := -trimpath -buildvcs=false -tags "netgo osusergo"
 
-# 默认目标
+.PHONY: all build linux windows darwin test vet tidy fmt clean help
+
 all: build
 
-# 安装依赖
-install-deps:
-	go mod tidy
-	go get fyne.io/fyne/v2/cmd/fyne@latest
-
-# 构建本地版本
+## 本机构建
 build:
-	go build -o bin/exceltool cmd/exceltool/main.go
+	CGO_ENABLED=0 go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(OUT)/$(BINARY) $(PKG)
 
-# 构建Windows版本
-build-windows:
-	GOOS=windows GOARCH=amd64 go build -o bin/exceltool-windows-amd64.exe cmd/exceltool/main.go
-	GOOS=windows GOARCH=arm64 go build -o bin/exceltool-windows-arm64.exe cmd/exceltool/main.go
+## 国产 Linux 全套架构
+linux:
+	@mkdir -p $(OUT)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64   go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(OUT)/$(BINARY)-linux-amd64   $(PKG)
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64   go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(OUT)/$(BINARY)-linux-arm64   $(PKG)
+	CGO_ENABLED=0 GOOS=linux GOARCH=loong64 go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(OUT)/$(BINARY)-linux-loong64 $(PKG)
+	CGO_ENABLED=0 GOOS=linux GOARCH=mips64le go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(OUT)/$(BINARY)-linux-mips64le $(PKG)
 
-# 构建银河麒麟ARM64版本
-build-kylin:
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc go build -o bin/exceltool-kylin-arm64 cmd/exceltool/main.go
+## Windows
+windows:
+	@mkdir -p $(OUT)
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(OUT)/$(BINARY)-windows-amd64.exe $(PKG)
+	CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(OUT)/$(BINARY)-windows-arm64.exe $(PKG)
 
-# 使用fyne-cross构建跨平台版本
-build-cross:
-	fyne-cross windows -arch=amd64,arm64
-	fyne-cross linux -arch=arm64 -release
+## macOS
+darwin:
+	@mkdir -p $(OUT)
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(OUT)/$(BINARY)-darwin-amd64 $(PKG)
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(OUT)/$(BINARY)-darwin-arm64 $(PKG)
 
-# 运行测试
+## 校验产物是否为完全静态（Linux 上可直接判定）
+check:
+	@for f in $(OUT)/$(BINARY)-linux-*; do \
+		echo "== $$f"; \
+		file "$$f"; \
+		ldd "$$f" 2>&1 | head -1; \
+	done
+
 test:
-	go test -v ./...
+	CGO_ENABLED=0 go test ./...
 
-# 清理构建文件
+vet:
+	CGO_ENABLED=0 go vet ./...
+
+tidy:
+	go mod tidy
+
+fmt:
+	gofmt -l -w .
+
 clean:
-	rm -rf bin/
-	rm -rf fyne-cross/
+	rm -rf $(OUT) output
 
-# 安装到系统
-install: build
-	cp bin/exceltool /usr/local/bin/
-
-# 开发模式运行
-run:
-	go run cmd/exceltool/main.go
-
-# 打包发布
-package: build-cross
-	mkdir -p release
-	cp fyne-cross/*/exceltool* release/
-	cp README.md release/
-	cp LICENSE release/
-
-# 帮助信息
 help:
-	@echo "可用的make命令:"
-	@echo "  all          - 构建本地版本 (默认)"
-	@echo "  build        - 构建本地可执行文件"
-	@echo "  build-windows - 构建Windows版本"
-	@echo "  build-kylin  - 构建银河麒麟ARM64版本"
-	@echo "  build-cross  - 使用fyne-cross构建跨平台版本"
-	@echo "  test         - 运行测试"
-	@echo "  clean        - 清理构建文件"
-	@echo "  install      - 安装到系统"
-	@echo "  run          - 开发模式运行"
-	@echo "  package      - 打包发布版本"
-	@echo "  install-deps - 安装依赖"
-	@echo "  help         - 显示此帮助信息"
+	@echo "可用目标："
+	@echo "  build    本机构建（CGO_ENABLED=0）"
+	@echo "  linux    国产 Linux：amd64 / arm64 / loong64 / mips64le"
+	@echo "  windows  Windows：amd64 / arm64"
+	@echo "  darwin   macOS：amd64 / arm64"
+	@echo "  check    检查 Linux 产物是否完全静态"
+	@echo "  test     go test ./..."
+	@echo "  vet      go vet ./..."
+	@echo "  clean    清理 bin/ 与 output/"

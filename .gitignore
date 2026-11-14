@@ -1,0 +1,23 @@
+# 构建产物
+bin/
+*.exe
+exceltool
+exceltool-*
+
+# 运行产物
+output/
+*.xlsx
+*.xlsm
+*.xls
+!testdata/*.xlsx
+
+# 临时文件
+*.tmp
+*.tmp-*
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp

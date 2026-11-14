@@ -1,229 +1,190 @@
-# ExcelTool - 跨平台Excel处理工具
+# ExcelTool
 
-这是一个使用Go语言开发的现代化Excel处理工具，采用Web技术栈实现跨平台支持，完美适配Windows和银河麒麟ARM64架构。
+跨平台 Excel 批处理工具：删除行列、同构合并、连接合并（INNER / LEFT / RIGHT / NOT IN）。
 
-## 技术栈变更说明
+- **后端**：Go 1.x + `net/http` 标准库 + [excelize](https://github.com/xuri/excelize)
+- **前端**：HTML + CSS + 原生 JS，通过 `go:embed` 打进二进制
+- **零外部依赖**：不依赖 webview / WebKit / GTK / glibc，`CGO_ENABLED=0` 编译后是**完全静态**的单文件
+- **零 cgo**：在 Windows 上直接交叉编译出麒麟 / 统信等国产 Linux 架构的产物，不需要 WSL、Docker、zig、交叉编译器
 
-**从桌面GUI转向Web技术栈**
+> 运行环境要求：目标 Linux 内核 ≥ 3.2（麒麟 V10 是 4.19，UOS 20 是 4.19/5.10），以及一个桌面浏览器（麒麟/UOS 桌面自带 Firefox）。
 
-考虑到跨平台兼容性和用户体验，我们从传统的桌面GUI框架(Fyne)转向了现代化的Web技术栈：
+---
 
-### 新技术架构
-- **后端**: Go语言 + net/http原生Web服务器
-- **Excel处理**: [excelize](https://github.com/qiniu/excelize) 库 (功能强大，性能优异)
-- **前端界面**: HTML5 + CSS3 + JavaScript
-- **UI设计**: 响应式深色主题，与系统配色一致
-- **部署方式**: 单一可执行文件，无需额外依赖
+## 一、功能
 
-### 优势对比
-| 特性 | 原桌面GUI | 现Web技术栈 |
-|------|-----------|-------------|
-| 跨平台兼容性 | ⚠️ 有限 | ✅ 优秀 |
-| 系统集成 | ⚠️ 复杂 | ✅ 简单 |
-| 用户体验 | ⚠️ 平台差异大 | ✅ 一致体验 |
-| 部署复杂度 | ⚠️ 高 | ✅ 极简 |
-| 性能表现 | ⚠️ 一般 | ✅ 优异 |
+### 1. 删除行列
+- 删除前 N 行 / 后 N 行 / 指定行（`1,3,5-10`，支持全角逗号、顿号、反向区间 `5-3`）
+- 删除前 N 列 / 后 N 列 / 指定列（`A,C,E-G`，也接受数字 `1,3-5`）
+- 批量处理多个文件
+- 输出模式：另存为新文件（默认加后缀）/ 覆盖同名文件
+- **保真**：直接在工作簿副本上调用 `RemoveRow`/`RemoveCol`，样式、公式、列宽、图片、图表、数据验证、条件格式、其它工作表全部保留；合并单元格、超链接的引用由 excelize 自动调整
 
-## 核心功能
+### 2. 同构合并
+- 以**主文件表头**为准，其它文件按**表头名**对齐，缺少的列留空
+- 输入流式读取 + 输出 `StreamWriter` 流式写入，内存占用与总行数基本无关
+- 表头为空/重复会自动跳过并给出警告；缺少目标工作表的文件会被跳过并报告
 
-### 📊 1. 删除行列
-- 删除工作表的前N行/后N行
-- 删除指定行号范围（支持1,3-5格式）
-- 删除前N列/指定列
-- 支持批量处理多个文件
-- 灵活的输出选项：覆盖原文件或另存为新文件
+### 3. 连接合并
+| 类型 | 语义 |
+|---|---|
+| `INNER JOIN` | 只保留两边键都匹配上的行 |
+| `LEFT JOIN` | 保留左表全部行，右表无匹配时留空 |
+| `RIGHT JOIN` | 保留右表全部行，左表无匹配时留空 |
+| `NOT IN (A-B)` | 差集：左表键不在右表中的行（只输出左表列） |
 
-### 🔗 2. 同构文件合并
-- 智能合并多个结构相同的Excel文件
-- 自动表头识别与处理
-- 批量文件导入支持
-- 灵活的输出配置
+- 支持**多规则链式连接**：第 1 条规则作用于基表，之后每条规则作用于上一步的结果
+- 连接键按列名匹配（先精确、再忽略大小写、最后支持数字列号），值做 `TrimSpace` 归一化
+- 右列重名自动加后缀并给出警告
+- 输出字段可留空（全部列），也可写 `table1.sheet1.*`、`table2.列名`、`列名`
 
-### 🔗 3. 连接合并
-- **强大的关系运算支持**：
-  - INNER JOIN (内连接)
-  - LEFT JOIN (左连接)
-  - RIGHT JOIN (右连接)
-  - **NOT IN (A-B)** (差集运算) ⭐
-- 多规则连接配置
-- 跨工作表连接支持
-- 实时结果预览
+---
 
-## 快速开始
+## 二、构建
 
-### 1. 环境准备
-确保已安装Go 1.16+
+### Windows（推荐，一键出全部架构）
 
-### 2. 安装依赖
-```bash
-go mod tidy
+```powershell
+# 需要 Go 1.23+ 在 PATH 中
+.\scripts\build.ps1 -Version 3.1.0
 ```
 
-### 3. 启动应用
-```batch
-# 推荐方式：使用启动脚本
-launch_final.bat
+脚本会：
+1. 强制 `CGO_ENABLED=0`
+2. 扫描依赖里是否有任何带 C 代码的包，有就**直接失败**
+3. 依次构建 linux/amd64、linux/arm64、linux/loong64、linux/mips64le、windows/amd64、windows/arm64
+4. 用 `scripts/check-elf.ps1` 逐个校验 ELF，**不是完全静态就失败**
+5. 生成 `bin/SHA256SUMS.txt`
 
-# 或手动编译运行
-go build -o exceltool.exe main.go
-exceltool.exe
-```
-
-### 4. 访问界面
-浏览器自动打开 `http://localhost:8080`，即可开始使用所有功能。
-
-## 跨平台编译
-```bash
-# Windows 64位
-GOOS=windows GOARCH=amd64 go build -o exceltool.exe main.go
-
-# 银河麒麟 ARM64
-GOOS=linux GOARCH=arm64 go build -o exceltool main.go
-
-# macOS
-GOOS=darwin GOARCH=amd64 go build -o exceltool main.go
-```
-
-## 使用指南
-
-### 🎯 操作流程
-1. **启动应用**：双击 `launch_final.bat` 或运行编译后的可执行文件
-2. **选择功能**：在左侧菜单选择所需功能模块
-3. **配置参数**：根据具体需求设置处理选项
-4. **执行操作**：点击相应按钮开始处理
-5. **查看结果**：实时日志显示处理进度和结果
-
-### 💡 使用技巧
-- **文件管理**：支持拖拽上传和批量文件选择
-- **参数保存**：常用配置可保存为模板
-- **错误处理**：详细的错误信息帮助快速定位问题
-- **性能优化**：大文件处理时建议分批操作
-
-## 开发文档
-
-### 📁 项目架构
-```
-go-exceltool/
-├── main.go              # Web服务器主入口
-├── core_processor.go    # Excel处理核心引擎
-├── web/
-│   ├── style.css        # 深色主题样式
-│   └── script.js        # 前端交互逻辑
-├── test_files/
-│   ├── employee.xlsx    # 员工测试数据
-│   ├── resigned.xlsx    # 离职员工数据
-│   └── department.xlsx  # 部门信息数据
-├── launch_scripts/
-│   ├── launch_final.bat # 主启动脚本
-│   └── launch_v3.bat    # 备用启动脚本
-├── utils/
-│   ├── create_test_files.go  # 测试文件生成器
-│   └── verify_results.go     # 结果验证工具
-└── go.mod              # Go模块配置
-```
-
-### 🔧 核心组件说明
-
-**Excel处理器** (`core_processor.go`)
-- `ExcelProcessor`: 主处理引擎
-- `DeleteConfig`: 删除操作配置
-- `JoinRule`: 连接规则定义
-- 支持完整的CRUD操作
-
-**Web界面** (`web/`)
-- 响应式深色主题设计
-- 左侧导航菜单
-- 三个核心功能面板
-- 实时日志显示
-
-**API接口**
-- `/upload`: 文件上传
-- `/process/delete`: 删除行列处理
-- `/process/merge`: 文件合并
-- `/process/join`: 连接合并
-- `/download`: 结果下载
-
-### 🧪 测试验证
-
-项目包含完整的测试套件：
+### Linux / macOS / WSL
 
 ```bash
-# 核心功能测试
-go run core_processor.go
-
-# 结果验证
-go run verify_results.go
-
-# 测试文件生成
-go run create_test_files.go
+make linux VERSION=3.1.0     # 国产 Linux 四个架构
+make windows                 # Windows
+make check                   # file + ldd 校验静态性
+make test                    # go test ./...
 ```
 
-**测试覆盖**：
-- ✅ A NOT IN B 功能验证
-- ✅ 删除行列功能测试
-- ✅ 文件合并功能验证
-- ✅ 跨平台兼容性测试
+### 手工构建
 
-## 部署说明
-
-### 📦 生产环境部署
-
-**单一可执行文件部署**：
 ```bash
-# 编译优化版本
-go build -ldflags="-s -w" -o exceltool main.go
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+  go build -trimpath -tags "netgo osusergo" \
+  -ldflags "-s -w -X main.version=3.1.0" \
+  -o bin/exceltool-linux-arm64 ./cmd/exceltool
 ```
 
-**容器化部署**（可选）：
-```dockerfile
-FROM golang:alpine AS builder
-WORKDIR /app
-COPY . .
-RUN go build -o exceltool main.go
+> 不要加 `-buildmode=pie`：会给产物加回动态加载器依赖。
 
-FROM alpine:latest
-RUN apk --no-cache add ca-certificates
-WORKDIR /root/
-COPY --from=builder /app/exceltool .
-EXPOSE 8080
-CMD ["./exceltool"]
+### 在目标机验证
+
+```bash
+chmod +x exceltool-linux-arm64
+ldd ./exceltool-linux-arm64          # 期望：not a dynamic executable
+./exceltool-linux-arm64 --no-browser  # 控制台会打印访问地址
 ```
 
-## 重要说明
+---
 
-### ⚠️ 使用注意事项
-1. **端口占用**：程序默认使用8080端口，如被占用请修改源码中的端口号
-2. **内存管理**：处理大型Excel文件时建议分批操作，避免内存溢出
-3. **数据安全**：重要文件操作前请务必备份原始数据
-4. **文件格式**：目前支持.xlsx格式，暂不支持.xls格式
-5. **浏览器兼容**：推荐使用现代浏览器（Chrome/Firefox/Edge）
+## 三、运行
 
-### 🔒 安全建议
-- 不要在公网环境中暴露此服务
-- 处理敏感数据时建议在本地网络环境中使用
-- 定期清理临时文件和处理日志
+```bash
+./exceltool                 # 自动挑空闲端口并打开浏览器
+./exceltool -no-browser     # 不自动开浏览器（服务器/无桌面环境）
+./exceltool -port 18080     # 指定端口
+./exceltool -output /data/输出   # 指定默认输出目录
+./exceltool -version
+```
 
-## 版本历史
+服务只监听 `127.0.0.1`，不会暴露到局域网。
 
-### v3.0.0 (当前版本)
-- ✅ 技术栈升级：从桌面GUI转向Web技术栈
-- ✅ 深色主题界面，更好的视觉体验
-- ✅ 完整的A NOT IN B功能实现
-- ✅ 跨平台支持优化
-- ✅ 单一可执行文件部署
+---
 
-### v2.0.0
-- Fyne GUI框架实现
-- 基础Excel处理功能
+## 四、输出路径规则（重要）
 
-### v1.0.0
-- Python PySide6版本
-- 原始功能实现
+浏览器出于安全限制**不会**把文件的绝对路径告诉后端，所以「输出目录」由用户填写，规则如下：
+
+| 你填的内容 | 结果 |
+|---|---|
+| 留空 | 可执行文件旁的 `output/` 目录 |
+| `/data/out` | `/data/out/<原文件名>.xlsx`（不存在会自动创建） |
+| `/data/out/` | 同上（结尾斜杠无所谓） |
+| `/data/out/结果.xlsx` | 单文件时精确输出到这个文件 |
+| `" /data/out "` | 自动去掉首尾空白和引号 |
+| 目录里含空格/中文 | 原样保留，不会被改写 |
+| 批量处理时填了 `.xlsx` | 报错：批量模式必须给目录 |
+
+实现要点（`internal/app/paths.go`）：
+
+- 目录与文件名一律用 `filepath.Join` 拼接，绝不字符串相加，因此不会出现 `/file abc.xlsx` 这种把目录和文件名用空格连起来的历史问题
+- 上传文件名先做 `SanitizeFileName`：同时按 `/` 和 `\` 切分取最后一段，过滤控制字符和 Windows 非法字符，修正 `CON/PRN/...` 保留名
+- 写盘用「临时文件 + 重命名」，覆盖同名文件时即使中途失败也不会留下半个文件
+- 最终路径统一转成绝对路径并回显在界面上
+
+---
+
+## 五、HTTP 接口
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/config` | 默认输出目录、版本、平台 |
+| POST | `/api/sheet-info` | 读取工作簿表名 / 行列数 / 表头 |
+| POST | `/api/delete-rows` | 删除行列（multipart） |
+| POST | `/api/merge` | 同构合并（multipart） |
+| POST | `/api/join` | 连接合并（multipart + JSON `spec`） |
+| GET | `/api/download?path=` | 下载结果（仅限白名单目录） |
+| POST | `/api/reveal?path=` | 在文件管理器中打开（仅本机页面） |
+| POST | `/api/exit` | 退出程序（仅本机页面） |
+
+安全措施：
+- 只监听回环地址
+- `/api/exit`、`/api/reveal` 校验 `Origin`/`Referer`，第三方网页无法驱动
+- 上传限制 1 GiB、单次最多 200 个文件
+- 下载只允许本次任务写出的目录和默认输出目录，`..` 越权会被拒绝
+
+---
+
+## 六、目录结构
+
+```
+cmd/exceltool/main.go      # 入口：参数、端口、打开浏览器
+internal/app/paths.go      # 输出路径解析（本项目的核心修复点）
+internal/app/server.go     # 路由与处理器
+pkg/excel/delete.go        # 删除行列（copy-then-mutate）
+pkg/excel/merge.go         # 同构合并（流式）
+pkg/excel/join.go          # 四类连接 + 链式规则
+pkg/excel/range.go         # 行列范围解析
+web/                       # index.html / script.js / style.css（go:embed）
+scripts/build.ps1          # 交叉编译 + 静态性校验
+scripts/check-elf.ps1      # ELF 校验器
+test/integration_test.go   # 端到端 HTTP 测试
+docs/                      # 技术选型与静态编译验证报告
+```
+
+---
+
+## 七、限制与说明
+
+1. **只支持 `.xlsx` / `.xlsm`**。`.xls`（97-2003 二进制格式）excelize 不支持；如需支持，必须外挂转换器（会破坏「零依赖」）。
+2. **excelize 会把整个工作簿读进内存**，超大文件（>200 MB）请先在 Excel 里拆分。
+3. 合并 / 连接的输出是**新工作簿**，单元格按文本写入，源文件里的样式不会带过来（删除行列走的是副本，样式保留）。
+4. 界面依赖浏览器。麒麟/UOS 桌面自带 Firefox；若在纯命令行服务器上运行，用 `-no-browser` 后从别的机器访问会失败（服务绑定回环地址），这是有意的安全设计。
+
+---
+
+## 八、测试
+
+```bash
+go test ./...
+```
+
+覆盖：
+- 范围解析（全角符号、反向区间、越界）
+- 删除行列后端到端，以及**样式/公式/合并单元格/列宽是否保留**
+- 合并的表头对齐与缺列处理
+- 四种连接类型、链式连接、输出字段筛选
+- 输出路径：带空格、中文、结尾斜杠、精确文件路径、批量模式拒绝文件路径、越权下载、外部 Origin 调用退出
 
 ## 许可证
 
-MIT License
-
-## 技术支持
-
-如有问题或建议，请提交Issue或联系开发团队。
+MIT
